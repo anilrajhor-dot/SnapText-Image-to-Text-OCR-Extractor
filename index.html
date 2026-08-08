@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>SnapText — Image to Text Extractor</title>
+  <title>SnapText — Image to Text Extractor + Translator</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- Fonts -->
@@ -11,6 +11,18 @@
   <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <!-- Simple translation API (example using LibreTranslate) -->
+  <script>
+    async function translateText(text, targetLang) {
+      const res = await fetch("https://translate.argosopentech.com/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ q: text, source: "auto", target: targetLang })
+      });
+      const data = await res.json();
+      return data.translatedText;
+    }
+  </script>
 
   <style>
     body { font-family:'Inter',sans-serif; background:#F4EDE2; margin:0; color:#0E0E10; }
@@ -19,9 +31,10 @@
     .badge { background:#F5B301; padding:0.3rem 0.6rem; border-radius:8px; }
     .drop-zone { border:2px dashed #ccc; border-radius:12px; padding:2rem; text-align:center; margin:2rem; background:#fff; }
     .layout { display:flex; flex-wrap:wrap; gap:1rem; margin:1rem; }
-    .image-panel,.text-panel { flex:1; min-width:300px; background:#fff; border-radius:12px; box-shadow:0 2px 6px rgba(0,0,0,0.1); padding:1rem; }
+    .panel { flex:1; min-width:300px; background:#fff; border-radius:12px; box-shadow:0 2px 6px rgba(0,0,0,0.1); padding:1rem; }
     canvas { max-width:100%; border-radius:8px; }
-    textarea { width:100%; height:300px; border-radius:8px; border:1px solid #ccc; padding:0.5rem; font-family:monospace; }
+    textarea { width:100%; height:200px; border-radius:8px; border:1px solid #ccc; padding:0.5rem; font-family:monospace; }
+    select, button { margin-top:0.5rem; }
     .toast { position:fixed; bottom:1rem; right:1rem; background:#0E0E10; color:#fff; padding:0.8rem 1rem; border-radius:8px; opacity:0; transition:opacity 0.3s; }
     .toast.show { opacity:1; }
   </style>
@@ -38,12 +51,23 @@
   </div>
 
   <div class="layout">
-    <div class="image-panel">
+    <div class="panel">
       <canvas id="imageCanvas"></canvas>
       <button onclick="extractText()">Extract Text</button>
     </div>
-    <div class="text-panel">
+    <div class="panel">
+      <h3>OCR Result</h3>
       <textarea id="resultText"></textarea>
+      <h3>Translate To:</h3>
+      <select id="translateSelect">
+        <option value="hi">Hindi</option>
+        <option value="fr">French</option>
+        <option value="es">Spanish</option>
+        <option value="de">German</option>
+      </select>
+      <button onclick="doTranslate()">Translate</button>
+      <h3>Translated Output</h3>
+      <textarea id="translatedText"></textarea>
     </div>
   </div>
 
@@ -57,6 +81,7 @@ const fileInput=document.getElementById('fileInput');
 const canvas=document.getElementById('imageCanvas');
 const ctx=canvas.getContext('2d');
 const resultText=document.getElementById('resultText');
+const translatedText=document.getElementById('translatedText');
 const toast=document.getElementById('toast');
 let currentImage=null;
 
@@ -100,11 +125,19 @@ async function loadPDF(file,password){
 
 async function extractText(){
   if(!currentImage){showToast("No image loaded");return;}
-  const {data}=ctx.getImageData(0,0,canvas.width,canvas.height);
   const worker=await Tesseract.createWorker("eng");
   const {data:{text}}=await worker.recognize(canvas);
   resultText.value=text;
   await worker.terminate();
+}
+
+async function doTranslate(){
+  const text=resultText.value;
+  if(!text){showToast("No text to translate");return;}
+  const target=document.getElementById("translateSelect").value;
+  const translated=await translateText(text,target);
+  translatedText.value=translated;
+  showToast("Translation complete");
 }
 </script>
 </body>
