@@ -5,7 +5,7 @@
   <title>SnapText — Image to Text Extractor</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- Google Fonts -->
+  <!-- Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
 
   <!-- Libraries -->
@@ -25,11 +25,8 @@
     canvas { max-width:100%; border-radius:8px; }
     .controls button { background:#F5B301; border:none; border-radius:8px; padding:0.4rem 0.8rem; margin:0.2rem; cursor:pointer; }
     textarea { width:100%; height:300px; border-radius:8px; border:1px solid #ccc; padding:0.5rem; font-family:monospace; }
-    .progress { height:6px; background:#F5B301; width:0%; transition:width 0.3s; }
     .toast { position:fixed; bottom:1rem; right:1rem; background:#0E0E10; color:#fff; padding:0.8rem 1rem; border-radius:8px; opacity:0; transition:opacity 0.3s; }
     .toast.show { opacity:1; }
-    .confidence { margin-top:0.5rem; font-weight:bold; }
-    .confidence.green{color:green;} .confidence.amber{color:orange;} .confidence.red{color:red;}
   </style>
 </head>
 <body>
@@ -54,29 +51,11 @@
         <button onclick="resetImage()">Reset</button>
         <button onclick="toggleEnhance()">Enhance</button>
       </div>
-      <select id="languageSelect" multiple>
-        <option value="eng" selected>English</option>
-        <option value="hin">Hindi</option>
-        <option value="mar">Marathi</option>
-        <option value="guj">Gujarati</option>
-        <option value="tam">Tamil</option>
-        <option value="tel">Telugu</option>
-        <option value="ben">Bengali</option>
-        <option value="kan">Kannada</option>
-        <option value="ara">Arabic</option>
-        <option value="spa">Spanish</option>
-        <option value="fra">French</option>
-        <option value="deu">German</option>
-        <option value="chi_sim">Chinese Simplified</option>
-      </select>
-      <br><br>
       <button onclick="extractText()">Extract Text</button>
-      <div class="progress" id="progress"></div>
     </div>
 
     <div class="text-panel">
       <textarea id="resultText"></textarea>
-      <div id="confidence" class="confidence"></div>
       <button onclick="copyText()">Copy to Clipboard</button>
       <button onclick="downloadText()">Download .txt</button>
     </div>
@@ -85,60 +64,37 @@
   <div class="toast" id="toast"></div>
 
 <script>
-// Ensure pdf.js worker is set
+// pdf.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
 
 const dropZone=document.getElementById('dropZone');
 const fileInput=document.getElementById('fileInput');
 const canvas=document.getElementById('imageCanvas');
 const ctx=canvas.getContext('2d');
-const resultText=document.getElementById('resultText');
-const progress=document.getElementById('progress');
 const toast=document.getElementById('toast');
-const confidenceEl=document.getElementById('confidence');
-let currentImage=null; let enhance=false;
+let currentImage=null;
 
 function showToast(msg){toast.textContent=msg;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),3000);}
+
 dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('dragover');});
 dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('dragover'));
 dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('dragover');handleFiles(e.dataTransfer.files);});
 fileInput.addEventListener('change',e=>handleFiles(e.target.files));
-document.addEventListener('paste',e=>{
-  const items=e.clipboardData.items;
-  for(let item of items){if(item.type.startsWith('image/')){handleFiles([item.getAsFile()]);}}
-});
 
 async function handleFiles(files){
   for(let file of files){
     const type=file.type.toLowerCase();
     if(type.includes("pdf")){
       try{
-        const arrayBuffer=await file.arrayBuffer();
-        const pdf=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
-        for(let i=1;i<=pdf.numPages;i++){
-          const page=await pdf.getPage(i);
-          const viewport=page.getViewport({scale:1.5});
-          const tempCanvas=document.createElement('canvas');
-          const tctx=tempCanvas.getContext('2d');
-          tempCanvas.width=viewport.width; tempCanvas.height=viewport.height;
-          await page.render({canvasContext:tctx,viewport}).promise;
-          if(i===1){canvas.width=tempCanvas.width;canvas.height=tempCanvas.height;ctx.drawImage(tempCanvas,0,0);currentImage=new Image();currentImage.src=tempCanvas.toDataURL();}
-          queueOCRJob(tempCanvas.toDataURL(),file.name+"_page"+i);
-        }
-        showToast(`Loaded PDF: ${file.name} (${pdf.numPages} pages)`);
-      }catch(err){showToast("Error reading PDF: "+err.message);}
+        await loadPDF(file);
+      }catch(err){
+        if(err.name==="PasswordException"){
+          const pwd=prompt("This PDF is password-protected. Enter password:");
+          if(pwd){await loadPDF(file,pwd);} else {showToast("Password required to open this PDF");}
+        } else {showToast("Error reading PDF: "+err.message);}
+      }
     } else if(type.startsWith("image/")){
       const reader=new FileReader();
       reader.onload=e=>{
         const img=new Image();
-        img.onload=()=>{canvas.width=img.width;canvas.height=img.height;ctx.drawImage(img,0,0);currentImage=img;};
-        img.src=e.target.result;
-      };
-      reader.readAsDataURL(file);
-    } else {showToast('Unsupported file type: '+file.name);}
-  }
-}
-
-function queueOCRJob(dataUrl,label){console.log("Queued OCR job:",label);}
-
-function rotate(deg){if(!currentImage)return;const tempCanvas=document.createElement('canvas');const tctx=tempCanvas.getContext('2d');tempCanvas.width=currentImage.height;tempCanvas.height=currentImage.width;tctx.translate(tempCanvas.width/2,tempCanvas.height/2);tctx.rotate(deg*Math.PI/180);tctx.drawImage(currentImage,-currentImage.width/2,-currentImage.height/2);canvas.width=tempCanvas.width;canvas.height=tempCanvas.height;ctx.draw
+        img.onload=()=>{canvas.width=img.width;canvas
