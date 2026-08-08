@@ -11,19 +11,16 @@
   <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
   <style>
     body { font-family:'Inter',sans-serif; background:#F4EDE2; margin:0; color:#0E0E10; }
-    header { background:#fff; padding:1rem; box-shadow:0 2px 6px rgba(0,0,0,0.1); position:sticky; top:0; display:flex; justify-content:space-between; align-items:center; }
+    header { background:#fff; padding:1rem; box-shadow:0 2px 6px rgba(0,0,0,0.1); display:flex; justify-content:space-between; }
     header h1 { font-family:'Poppins',sans-serif; margin:0; }
     .badge { background:#F5B301; padding:0.3rem 0.6rem; border-radius:8px; }
     .drop-zone { border:2px dashed #ccc; border-radius:12px; padding:2rem; text-align:center; margin:2rem; background:#fff; }
-    .drop-zone.dragover { border-color:#F5B301; }
     .layout { display:flex; flex-wrap:wrap; gap:1rem; margin:1rem; }
     .image-panel,.text-panel { flex:1; min-width:300px; background:#fff; border-radius:12px; box-shadow:0 2px 6px rgba(0,0,0,0.1); padding:1rem; }
     canvas { max-width:100%; border-radius:8px; }
-    .controls button { background:#F5B301; border:none; border-radius:8px; padding:0.4rem 0.8rem; margin:0.2rem; cursor:pointer; }
     textarea { width:100%; height:300px; border-radius:8px; border:1px solid #ccc; padding:0.5rem; font-family:monospace; }
     .toast { position:fixed; bottom:1rem; right:1rem; background:#0E0E10; color:#fff; padding:0.8rem 1rem; border-radius:8px; opacity:0; transition:opacity 0.3s; }
     .toast.show { opacity:1; }
@@ -38,63 +35,77 @@
   <div class="drop-zone" id="dropZone">
     <p>Paste screenshots with Ctrl+V, or drag & drop images/PDFs here</p>
     <input type="file" id="fileInput" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp">
-    <br><br>
-    <button onclick="document.getElementById('fileInput').click()">Browse Files</button>
   </div>
 
   <div class="layout">
     <div class="image-panel">
       <canvas id="imageCanvas"></canvas>
-      <div class="controls">
-        <button onclick="rotate(-90)">Rotate Left</button>
-        <button onclick="rotate(90)">Rotate Right</button>
-        <button onclick="resetImage()">Reset</button>
-        <button onclick="toggleEnhance()">Enhance</button>
-      </div>
       <button onclick="extractText()">Extract Text</button>
     </div>
-
     <div class="text-panel">
       <textarea id="resultText"></textarea>
-      <button onclick="copyText()">Copy to Clipboard</button>
-      <button onclick="downloadText()">Download .txt</button>
     </div>
   </div>
 
   <div class="toast" id="toast"></div>
 
 <script>
-// pdf.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
 
 const dropZone=document.getElementById('dropZone');
 const fileInput=document.getElementById('fileInput');
 const canvas=document.getElementById('imageCanvas');
 const ctx=canvas.getContext('2d');
+const resultText=document.getElementById('resultText');
 const toast=document.getElementById('toast');
 let currentImage=null;
 
 function showToast(msg){toast.textContent=msg;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),3000);}
 
-dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('dragover');});
-dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('dragover'));
-dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('dragover');handleFiles(e.dataTransfer.files);});
+dropZone.addEventListener('dragover',e=>{e.preventDefault();});
+dropZone.addEventListener('drop',e=>{e.preventDefault();handleFiles(e.dataTransfer.files);});
 fileInput.addEventListener('change',e=>handleFiles(e.target.files));
 
 async function handleFiles(files){
   for(let file of files){
     const type=file.type.toLowerCase();
     if(type.includes("pdf")){
-      try{
-        await loadPDF(file);
-      }catch(err){
+      try{await loadPDF(file);}catch(err){
         if(err.name==="PasswordException"){
           const pwd=prompt("This PDF is password-protected. Enter password:");
-          if(pwd){await loadPDF(file,pwd);} else {showToast("Password required to open this PDF");}
-        } else {showToast("Error reading PDF: "+err.message);}
+          if(pwd){await loadPDF(file,pwd);} else {showToast("Password required");}
+        } else {showToast("Error: "+err.message);}
       }
     } else if(type.startsWith("image/")){
       const reader=new FileReader();
       reader.onload=e=>{
         const img=new Image();
-        img.onload=()=>{canvas.width=img.width;canvas
+        img.onload=()=>{canvas.width=img.width;canvas.height=img.height;ctx.drawImage(img,0,0);currentImage=img;};
+        img.src=e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+}
+
+async function loadPDF(file,password){
+  const arrayBuffer=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:arrayBuffer,password}).promise;
+  const page=await pdf.getPage(1);
+  const viewport=page.getViewport({scale:1.5});
+  canvas.width=viewport.width; canvas.height=viewport.height;
+  await page.render({canvasContext:ctx,viewport}).promise;
+  showToast(`Loaded PDF: ${file.name}`);
+}
+
+async function extractText(){
+  if(!currentImage){showToast("No image loaded");return;}
+  const {data}=ctx.getImageData(0,0,canvas.width,canvas.height);
+  const worker=await Tesseract.createWorker("eng");
+  const {data:{text}}=await worker.recognize(canvas);
+  resultText.value=text;
+  await worker.terminate();
+}
+</script>
+</body>
+</html>
