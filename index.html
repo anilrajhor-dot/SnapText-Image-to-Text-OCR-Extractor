@@ -85,7 +85,7 @@
   <div class="toast" id="toast"></div>
 
 <script>
-// Fix: set pdf.js worker
+// Ensure pdf.js worker is set
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
 
 const dropZone=document.getElementById('dropZone');
@@ -110,21 +110,24 @@ document.addEventListener('paste',e=>{
 
 async function handleFiles(files){
   for(let file of files){
-    if(file.type==='application/pdf'){
-      const arrayBuffer=await file.arrayBuffer();
-      const pdf=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
-      for(let i=1;i<=pdf.numPages;i++){
-        const page=await pdf.getPage(i);
-        const viewport=page.getViewport({scale:1.5});
-        const tempCanvas=document.createElement('canvas');
-        const tctx=tempCanvas.getContext('2d');
-        tempCanvas.width=viewport.width; tempCanvas.height=viewport.height;
-        await page.render({canvasContext:tctx,viewport}).promise;
-        if(i===1){canvas.width=tempCanvas.width;canvas.height=tempCanvas.height;ctx.drawImage(tempCanvas,0,0);currentImage=new Image();currentImage.src=tempCanvas.toDataURL();}
-        queueOCRJob(tempCanvas.toDataURL(),file.name+"_page"+i);
-      }
-      showToast(`Loaded PDF: ${file.name} (${pdf.numPages} pages)`);
-    } else if(file.type.startsWith('image/')){
+    const type=file.type.toLowerCase();
+    if(type.includes("pdf")){
+      try{
+        const arrayBuffer=await file.arrayBuffer();
+        const pdf=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+        for(let i=1;i<=pdf.numPages;i++){
+          const page=await pdf.getPage(i);
+          const viewport=page.getViewport({scale:1.5});
+          const tempCanvas=document.createElement('canvas');
+          const tctx=tempCanvas.getContext('2d');
+          tempCanvas.width=viewport.width; tempCanvas.height=viewport.height;
+          await page.render({canvasContext:tctx,viewport}).promise;
+          if(i===1){canvas.width=tempCanvas.width;canvas.height=tempCanvas.height;ctx.drawImage(tempCanvas,0,0);currentImage=new Image();currentImage.src=tempCanvas.toDataURL();}
+          queueOCRJob(tempCanvas.toDataURL(),file.name+"_page"+i);
+        }
+        showToast(`Loaded PDF: ${file.name} (${pdf.numPages} pages)`);
+      }catch(err){showToast("Error reading PDF: "+err.message);}
+    } else if(type.startsWith("image/")){
       const reader=new FileReader();
       reader.onload=e=>{
         const img=new Image();
@@ -138,5 +141,4 @@ async function handleFiles(files){
 
 function queueOCRJob(dataUrl,label){console.log("Queued OCR job:",label);}
 
-function rotate(deg){if(!currentImage)return;const tempCanvas=document.createElement('canvas');const tctx=tempCanvas.getContext('2d');tempCanvas.width=currentImage.height;tempCanvas.height=currentImage.width;tctx.translate(tempCanvas.width/2,tempCanvas.height/2);tctx.rotate(deg*Math.PI/180);tctx.drawImage(currentImage,-currentImage.width/2,-currentImage.height/2);canvas.width=tempCanvas.width;canvas.height=tempCanvas.height;ctx.drawImage(tempCanvas,0,0);}
-function resetImage(){if(!currentImage)return;canvas.width
+function rotate(deg){if(!currentImage)return;const tempCanvas=document.createElement('canvas');const tctx=tempCanvas.getContext('2d');tempCanvas.width=currentImage.height;tempCanvas.height=currentImage.width;tctx.translate(tempCanvas.width/2,tempCanvas.height/2);tctx.rotate(deg*Math.PI/180);tctx.drawImage(currentImage,-currentImage.width/2,-currentImage.height/2);canvas.width=tempCanvas.width;canvas.height=tempCanvas.height;ctx.draw
